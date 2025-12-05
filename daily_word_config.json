@@ -7,12 +7,12 @@
       "type": "string",
       "title": "目标QQ群号",
       "description": "填写需要推送每日一字的QQ群号",
-      "default": ""
+      "default": "1067390429"
     },
     "push_time_hour": {
       "type": "integer",
       "title": "推送时间 - 小时",
-      "description": "每天推送的小时数 (0-23)",
+      "description": "每天推送的小时数 (0-23)。插件默认值为 13，代码中也以 13 为缺省值。",
       "default": 13,
       "minimum": 0,
       "maximum": 23
@@ -26,13 +26,16 @@
       "maximum": 59
     },
     "admin_qq_list": {
-      "type": "array",
+      "oneOf": [
+        {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        { "type": "string" }
+      ],
       "title": "管理员QQ号列表",
-      "description": "可以使用 /HANZI 命令手动触发推送的管理员QQ号列表",
-      "items": {
-        "type": "string"
-      },
-      "default": []
+      "description": "可以使用 /HANZI 命令手动触发推送的管理员QQ号列表。支持数组格式或以逗号分隔的字符串（例如: \"123,456\"）。",
+      "default": ["2425725194"]
     }
   },
   "required": ["target_group_id"]
