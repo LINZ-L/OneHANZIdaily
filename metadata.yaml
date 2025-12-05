@@ -1,6 +1,7 @@
-name: astrbot_plugin_oneHANZIdaily # 插件唯一识别名，以 astrbot_plugin_ 前缀开头
-display_name: oneHANZIdaily # 用于展示的名字，可以是方便人类阅读的名字（需要版本 >= v4.5.0，低版本不会报错，请放心填写）
-desc: AstrBot 插件示例。 # 插件简短描述
-version: v1.3.0 # 插件版本号。格式：v1.1.1 或者 v1.1
-author: LINZ # 作者
-repo: // # 插件的仓库地址
+name: astrbot_plugin_oneHanziDaily
+display_name: oneHANZIdaily
+author: LINZ-L
+version: 1.1.0
+desc: 每天13:00自动向指定QQ群推送一个随机汉字的详细学习内容,包括读音、含义、繁体、词源、造词和造句。支持管理员通过 /HANZI 命令手动触发推送。
+repo: https://github.com/LINZ-L/OneHANZIdaily/tree/master
+
