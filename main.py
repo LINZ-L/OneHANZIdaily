@@ -19,11 +19,21 @@ from astrbot.core.message.components import Plain
 )
 class DailyWordPlugin(Star):
     """每日一字定时推送插件 - 使用 APScheduler"""
-    # 修复问题1：仅保留context参数，从context中读取配置（移除多余的config参数）
-    def __init__(self, context: Context):
+    # 支持两种实例化签名： (context) 或 (context, config)
+    def __init__(self, context: Context, config=None):
+        """初始化插件。
+
+        某些 AstrBot 版本会在实例化插件时传入 `(context, config)`，
+        为保持向后兼容，这里把 `config` 作为可选参数；优先使用传入的 `config`，
+        否则回退到 `context.config`。
+        """
         super().__init__(context)
         self.context = context
-        self.config = context.config  # 从上下文获取配置
+        # 优先使用显式传入的 config（如果存在），否则尝试从 context 中读取
+        if config is None:
+            self.config = getattr(context, "config", {}) or {}
+        else:
+            self.config = config or {}
         
         # 从配置文件中读取目标群号
         self.target_group = self.config.get("target_group_id", "")
@@ -70,7 +80,12 @@ class DailyWordPlugin(Star):
         
         # 优先从message_obj获取
         if hasattr(event, 'message_obj') and event.message_obj:
-            if hasattr(event.message_obj, 'sender') and hasattr(event.message_obj.sender, 'user_id'):
+            has_sender = hasattr(event.message_obj, 'sender')
+            has_user_id = (
+                has_sender and 
+                hasattr(event.message_obj.sender, 'user_id')
+            )
+            if has_user_id:
                 sender_qq = str(event.message_obj.sender.user_id)
             elif hasattr(event.message_obj, 'user_id'):
                 sender_qq = str(event.message_obj.user_id)
@@ -89,7 +104,7 @@ class DailyWordPlugin(Star):
         logger.info(f"[每日一字] 权限检查: QQ {sender_qq} {'是' if is_admin else '不是'}管理员")
         return is_admin
     
-    async def push_daily_word(self):
+    async def push_daily_word():
         """推送每日一字核心逻辑"""
         logger.info("[每日一字] 开始生成今日推送内容")
         
@@ -100,19 +115,15 @@ class DailyWordPlugin(Star):
         
         try:
             # 构建平台标识（适配QQ群消息）
-            umo = f"aiocqhttp:group:{self.target_group.strip()}"
-            
-            # 获取当前LLM提供商ID
+            umo = event.unified_msg_origin
             provider_id = await self.context.get_current_chat_provider_id(umo=umo)
-            if provider_id is None:
-                logger.error("[每日一字] 未找到可用的 LLM 提供商,请在 AstrBot 中配置 LLM 服务")
-                await self.send_error_message()
-                return
+            #if provider_id is None:
+            #logger.error("[每日一字] 未找到可用的 LLM 提供商,请在 AstrBot 中配置 LLM 服务")
+            #await self.send_error_message()
+            #return
             
             logger.info(f"[每日一字] 使用 LLM 提供商: {provider_id}")
-            
-            # 构建精准提示词（确保输出格式符合要求）
-            prompt = (
+            Prompt =(
                 "请严格按照以下要求生成内容，无需多余文字，不添加反问句：\n"
                 "1. 选择一个非汉语常用100字的随机汉字；\n"
                 "2. 按以下结构输出：\n"
@@ -127,11 +138,10 @@ class DailyWordPlugin(Star):
                 "6. 造句: [至少1个实用例句]\n"
                 "3. 语言简洁易懂，采用学术书面表达，总字数不超过1000字。"
             )
-            
             # 调用LLM生成内容
             llm_resp = await self.context.llm_generate(
                 chat_provider_id=provider_id,
-                prompt=prompt,
+                prompt = Prompt,
             )
             
             # 处理LLM返回结果
@@ -143,11 +153,11 @@ class DailyWordPlugin(Star):
                     return
                 
                 # 构建最终推送消息
-                final_message = f"📚 每日一字已推送 📚\n\n{content}"
+                final_message = MessageChain().text(f"{content}")
                 logger.info(f"[每日一字] AI 生成成功,内容长度: {len(content)} 字符")
-                
-                # 发送到目标群
-                await self.send_to_group(final_message)
+                logger.info( f"每日一字已推送\n\n{content}")
+                # 发送到目标群（若有 unified_msg_origin 可传入以保证准确投递）
+                await self.context.send_message(self.target_group, final_message)
             else:
                 logger.error("[每日一字] AI 返回结果为空")
                 await self.send_error_message()
@@ -157,43 +167,15 @@ class DailyWordPlugin(Star):
             logger.exception(e)  # 输出完整异常栈
             await self.send_error_message()
     
-    async def send_to_group(self, message: str):
-        """发送消息到目标QQ群"""
-        try:
-            # 获取所有平台适配器
-            platforms = self.context.get_all_platforms()
-            sent = False
-            
-            # 遍历适配器，找到QQ平台
-            for platform_name, platform_adapter in platforms.items():
-                if platform_name == "aiocqhttp":
-                    logger.info(f"[每日一字] 开始发送消息到群 {self.target_group}")
-                    # 构建消息链
-                    msg_chain = MessageChain([Plain(message)])
-                    # 发送消息（使用group_前缀的UID格式）
-                    result = await platform_adapter.send_by_uid(
-                        f"group_{self.target_group.strip()}",
-                        msg_chain
-                    )
-                    
-                    if result and result.get("success", False):
-                        logger.info(f"[每日一字] 消息已成功发送到群 {self.target_group}")
-                        sent = True
-                    else:
-                        logger.error(f"[每日一字] 消息发送失败，平台返回: {result}")
-                    break
-            
-            if not sent:
-                logger.error("[每日一字] 未找到可用的 QQ 平台适配器,请检查QQ平台配置")
-                
-        except Exception as e:
-            logger.error(f"[每日一字] 发送消息时出错: {type(e).__name__}: {str(e)}")
-            logger.exception(e)
+    #async def send_to_group(self, message: str, unified_msg_origin: str = None):
+        #发送消息到目标QQ群
+        #msg_chain = MessageChain([Plain(message)])
+
     
-    async def send_error_message(self):
-        """发送推送失败的错误提示"""
-        error_msg = "❌ 每日一字推送失败 ❌\n\n系统遇到错误，无法生成今日内容。请联系管理员检查配置或日志。"
-        await self.send_to_group(error_msg)
+    #async def send_error_message(self):
+        #"""发送推送失败的错误提示"""
+        #error_msg = "❌ 每日一字推送失败 ❌\n\n系统遇到错误，无法生成今日内容。请联系管理员检查配置或日志。"
+       # await self.send_to_group(error_msg)
 
     async def terminate(self):
         """插件停用/卸载时的清理逻辑：关闭调度器以避免残留任务"""
@@ -212,28 +194,30 @@ class DailyWordPlugin(Star):
     
     # 修复问题2：确保命令处理器正确接收event参数并处理
     @filter.command("HANZI")
-    async def manual_push(self, event: AstrMessageEvent):
-        """管理员手动触发推送（/HANZI 命令）"""
+    async def manual_push(self, event: AstrMessageEvent,  context: PluginContext, *args, **kwargs):
+        #管理员手动触发推送（/HANZI 命令）
+        
         logger.info(f"[每日一字] 收到手动推送命令，来源: {event.unified_msg_origin}")
         
-        # 权限校验
+        # 权限/有效群校验
         if not self.is_admin(event):
             logger.warning("[每日一字] 非管理员尝试使用 /HANZI 命令")
-            await event.reply("❌ 权限不足：您不是本插件的管理员，无法使用此命令。")
+            yield event.plain_result("❌ 权限不足：您不是本插件的管理员，无法使用此命令。")
             return
-        
-        # 校验目标群配置
         if not self.target_group or not self.target_group.strip():
-            await event.reply("❌ 错误：插件未配置有效目标群号，无法推送。")
+            yield event.plain_result("❌ 错误：插件未配置有效目标群号，无法推送。")
             return
         
-        # 反馈执行状态
-        await event.reply("✅ 正在生成每日一字内容，请稍候...")
+        logger.info("✅ 正在生成每日一字内容，请稍候...")
         
         try:
-            # 执行推送逻辑
+        # 执行推送逻辑
             await self.push_daily_word()
-            await event.reply("✅ 每日一字内容已成功推送至目标群！")
+            yield event.plain_result("✅ 已触发手动推送，请在目标群查看推送结果（若未收到请检查日志）。")
+            logger.info("✅ 每日一字内容已成功推送至目标群！")
         except Exception as e:
             logger.error(f"[每日一字] 手动推送失败: {str(e)}")
-            await event.reply(f"❌ 手动推送失败：{str(e)}")
+            # traceback.print_exc()
+            # yield event.plain_result(f"手动推送失败: {str(e)}")
+        # finally:
+            # event.stop_event()

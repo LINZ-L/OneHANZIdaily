@@ -1,0 +1,22 @@
+{
+  "target_group_id": {
+    "type": "string",
+    "description": "目标QQ群号（纯数字），插件会向该群推送每日一字。",
+    "default": "1067390429"
+  },
+  "push_time_hour": {
+    "type": "int",
+    "description": "推送时间 - 小时（0-23）。插件默认值为 13。",
+    "default": 13
+  },
+  "push_time_minute": {
+    "type": "int",
+    "description": "推送时间 - 分钟（0-59）。",
+    "default": 0
+  },
+  "admin_qq_list": {
+    "type": "list",
+    "description": "管理员 QQ 号列表。用于授予手动触发 (/HANZI) 权限。",
+    "default": ["2425725194"]
+  }
+}
