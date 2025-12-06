@@ -19,7 +19,7 @@
   },
   "agent_presets": {
     "description": "Agent模式预设词配置",
-    "type": "object",
+    "type": "string",
     "hint": "JSON格式，键为任务内容(预设词)，值为对应的Prompt提示词。例如: {\"早安\": \"请生成一段可爱的早安问候\"}",
     "default": {
       "早安": "System Instruction: 你是一个元气满满的助手。请根据当前时间生成一条可爱的早安问候，包含天气提醒（如果是早上）。"
